@@ -1,6 +1,6 @@
 {
   "name": "webpocalypse",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "CLI tool for batch image conversion to WebP/AVIF with quality control and directory structure preservation",
   "keywords": [
     "image",

@@ -8,6 +8,7 @@ export interface CliOptions {
   maxHeight?: number;
   out?: string;
   inPlace: boolean;
+  json: boolean;
 }
 
 export interface FileEntry {

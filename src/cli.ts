@@ -18,7 +18,8 @@ export function parseArgs(argv: string[]): { inputDir: string; options: CliOptio
     .option('--max-width <number>', 'Maximum output width in pixels (no upscaling)')
     .option('--max-height <number>', 'Maximum output height in pixels (no upscaling)')
     .option('-o, --out <path>', 'Output directory (default: <input>-optimized)')
-    .option('--in-place', 'Overwrite source directory safely via temp dir', false);
+    .option('--in-place', 'Overwrite source directory safely via temp dir', false)
+    .option('--json', 'Output structured JSON results to stdout', false);
 
   program.parse(argv);
 
@@ -67,6 +68,7 @@ export function parseArgs(argv: string[]): { inputDir: string; options: CliOptio
       maxHeight,
       out: opts.out ? path.resolve(opts.out as string) : undefined,
       inPlace: opts.inPlace as boolean,
+      json: opts.json as boolean,
     },
   };
 }

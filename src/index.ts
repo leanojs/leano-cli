@@ -120,6 +120,21 @@ async function main(): Promise<void> {
     const summary = buildSummary(results);
     printSummary(summary, finalOutputDir);
 
+    if (options.json) {
+      const jsonOutput = {
+        files: results
+          .filter((r) => r.success && !r.skipped)
+          .map((r) => ({
+            path: r.relativePath,
+            originalBytes: r.originalSize,
+            convertedBytes: r.convertedSize,
+          })),
+        totalOriginalBytes: summary.totalOriginalBytes,
+        totalConvertedBytes: summary.totalConvertedBytes,
+      };
+      process.stdout.write(JSON.stringify(jsonOutput) + '\n');
+    }
+
     process.exit(summary.failureCount > 0 ? 1 : 0);
   } catch (err) {
     progressSpinner?.stop();

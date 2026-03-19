@@ -3,7 +3,7 @@ import fs from 'fs';
 import ora from 'ora';
 import chalk from 'chalk';
 import { parseArgs } from './cli.js';
-import { scanDirectory } from './scan.js';
+import { scanDirectory, isConvertible } from './scan.js';
 import { writeOutput } from './writer.js';
 import {
   printTableHeader,
@@ -35,15 +35,16 @@ async function main(): Promise<void> {
   spinner.stop();
 
   if (files.length === 0) {
-    console.log(chalk.yellow('⚠ No supported images found in: ') + inputDir);
-    console.log(chalk.dim('  Supported formats: .jpg, .jpeg, .png, .webp, .avif'));
+    console.log(chalk.yellow('⚠ No files found in: ') + inputDir);
     process.exit(0);
   }
 
-  // Each file may produce 1 or 2 output files (when --format both)
+  const convertibleCount = files.filter(f => isConvertible(f.inputPath)).length;
+  const passthroughCount = files.length - convertibleCount;
+
+  // Convertible files produce 1 or 2 outputs (--format both); pass-throughs always 1
   const totalOutputs = files.reduce((sum, f) => {
-    const isPassthrough = /\.(webp|avif)$/i.test(f.inputPath);
-    return sum + (isPassthrough ? 1 : options.format === 'both' ? 2 : 1);
+    return sum + (isConvertible(f.inputPath) && options.format === 'both' ? 2 : 1);
   }, 0);
 
   const outputDir = options.inPlace
@@ -67,8 +68,11 @@ async function main(): Promise<void> {
     (options.maxWidth ? chalk.dim('  Max-W: ') + options.maxWidth : '') +
     (options.maxHeight ? chalk.dim('  Max-H: ') + options.maxHeight : '')
   );
+  const filesSummary = passthroughCount > 0
+    ? `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert, ${passthroughCount} asset${passthroughCount !== 1 ? 's' : ''} copied as-is`
+    : `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert`;
   console.log(
-    chalk.dim(`  Files:   ${files.length} image${files.length !== 1 ? 's' : ''} found → ${totalOutputs} output${totalOutputs !== 1 ? 's' : ''}`)
+    chalk.dim(`  Files:   ${filesSummary} → ${totalOutputs} output${totalOutputs !== 1 ? 's' : ''}`)
   );
 
   // ── Convert ───────────────────────────────────────────────────────────────

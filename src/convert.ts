@@ -1,10 +1,10 @@
-import sharp from 'sharp';
-import fs from 'fs';
-import path from 'path';
-import fse from 'fs-extra';
-import pLimit from 'p-limit';
-import type { FileEntry, CliOptions, ConversionResult } from './types.js';
-import { isPassthrough, replaceExtension } from './scan.js';
+import sharp from "sharp";
+import fs from "fs";
+import path from "path";
+import fse from "fs-extra";
+import pLimit from "p-limit";
+import type { FileEntry, CliOptions, ConversionResult } from "./types.js";
+import { isPassthrough, replaceExtension } from "./scan.js";
 
 function applyResize(image: sharp.Sharp, options: CliOptions): sharp.Sharp {
   if (!options.maxWidth && !options.maxHeight) return image;
@@ -12,16 +12,16 @@ function applyResize(image: sharp.Sharp, options: CliOptions): sharp.Sharp {
   return image.resize({
     width: options.maxWidth,
     height: options.maxHeight,
-    fit: 'inside',
+    fit: "inside",
     withoutEnlargement: true,
   });
 }
 
 async function encodeToFile(
   file: FileEntry,
-  format: 'webp' | 'avif',
+  format: "webp" | "avif",
   outputDir: string,
-  options: CliOptions
+  options: CliOptions,
 ): Promise<ConversionResult> {
   const inputBuffer = fs.readFileSync(file.inputPath);
   const originalSize = inputBuffer.length;
@@ -33,17 +33,19 @@ async function encodeToFile(
   let image = sharp(inputBuffer);
   image = applyResize(image, options);
 
-  if (format === 'webp') {
-    await (options.lossless
-      ? image.webp({ lossless: true })
-      : image.webp({ quality: options.quality })
+  if (format === "webp") {
+    await (
+      options.lossless
+        ? image.webp({ lossless: true })
+        : image.webp({ quality: options.quality })
     ).toFile(outputPath);
   } else {
     // effort 2 (scale 0–9): ~10× faster than default 4 with negligible quality
     // loss for web use. The default effort level locks the CPU.
-    await (options.lossless
-      ? image.avif({ lossless: true, effort: 2 })
-      : image.avif({ quality: options.quality, effort: 2 })
+    await (
+      options.lossless
+        ? image.avif({ lossless: true, effort: 2 })
+        : image.avif({ quality: options.quality, effort: 2 })
     ).toFile(outputPath);
   }
 
@@ -63,7 +65,7 @@ async function encodeToFile(
 
 async function passthroughFile(
   file: FileEntry,
-  outputDir: string
+  outputDir: string,
 ): Promise<ConversionResult> {
   const outputPath = path.join(outputDir, file.relativePath);
   await fse.ensureDir(path.dirname(outputPath));
@@ -91,13 +93,11 @@ export async function convertFiles(
   files: FileEntry[],
   outputDir: string,
   options: CliOptions,
-  onProgress: (result: ConversionResult) => void
+  onProgress: (result: ConversionResult) => void,
 ): Promise<ConversionResult[]> {
   // AVIF is much heavier to encode — reduce concurrency to avoid CPU saturation
   const concurrency =
-    options.format === 'avif' ? 3
-    : options.format === 'both' ? 4
-    : 6;
+    options.format === "avif" ? 3 : options.format === "both" ? 4 : 6;
 
   const limit = pLimit(concurrency);
   const allResults: ConversionResult[] = [];
@@ -113,8 +113,8 @@ export async function convertFiles(
       ];
     }
 
-    const formats: Array<'webp' | 'avif'> =
-      options.format === 'both' ? ['webp', 'avif'] : [options.format];
+    const formats: Array<"webp" | "avif"> =
+      options.format === "both" ? ["webp", "avif"] : [options.format];
 
     return formats.map((fmt) =>
       limit(async () => {
@@ -123,13 +123,17 @@ export async function convertFiles(
           result = await encodeToFile(file, fmt, outputDir, options);
         } catch (err) {
           const stat = (() => {
-            try { return fs.statSync(file.inputPath); } catch { return null; }
+            try {
+              return fs.statSync(file.inputPath);
+            } catch {
+              return null;
+            }
           })();
 
           result = {
             inputPath: file.inputPath,
             relativePath: file.relativePath,
-            outputPath: '',
+            outputPath: "",
             outputRelativePath: replaceExtension(file.relativePath, fmt),
             originalSize: stat?.size ?? 0,
             convertedSize: 0,
@@ -141,7 +145,7 @@ export async function convertFiles(
 
         allResults.push(result);
         onProgress(result);
-      })
+      }),
     );
   });
 

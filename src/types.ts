@@ -1,4 +1,4 @@
-export type OutputFormat = 'webp' | 'avif' | 'both';
+export type OutputFormat = "webp" | "avif" | "both";
 
 export interface CliOptions {
   format: OutputFormat;

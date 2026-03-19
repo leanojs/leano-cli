@@ -1,15 +1,24 @@
 {
   "name": "webpocalypse",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI tool for batch image conversion to WebP/AVIF with quality control and directory structure preservation",
-  "keywords": ["image", "conversion", "webp", "avif", "optimization", "cli"],
+  "keywords": [
+    "image",
+    "conversion",
+    "webp",
+    "avif",
+    "optimization",
+    "cli"
+  ],
   "author": "",
   "license": "MIT",
   "main": "dist/index.js",
   "bin": {
     "webpocalypse": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },

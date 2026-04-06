@@ -2,10 +2,8 @@ import fs from "fs";
 import path from "path";
 import type { FileEntry } from "./types.js";
 
-// Extensions that will be re-encoded by sharp
 const CONVERTIBLE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
 
-// OS/editor-generated files that should never appear in the output
 const IGNORED_FILENAMES = new Set([
   ".ds_store",
   "thumbs.db",
@@ -23,12 +21,6 @@ export function isIgnored(filename: string): boolean {
   return IGNORED_FILENAMES.has(path.basename(filename).toLowerCase());
 }
 
-/**
- * Returns true for files that should be copied verbatim to the output.
- * This includes already-optimised images (.webp, .avif) as well as any
- * other asset (.svg, .ico, .gif, fonts, JSON, etc.) that sharp cannot or
- * should not re-encode.
- */
 export function isPassthrough(filename: string): boolean {
   return !isConvertible(filename) && !isIgnored(filename);
 }
@@ -40,10 +32,22 @@ export function replaceExtension(filePath: string, newExt: string): string {
 }
 
 /**
- * Recursively walk a directory and collect every file that should appear in
- * the output — both convertible images (.jpg, .jpeg, .png) and pass-through
- * assets (.webp, .avif, .svg, .ico, fonts, etc.).
- * OS-generated junk (.DS_Store, Thumbs.db …) is silently skipped.
+ * Verify that filePath is strictly inside rootDir after path resolution.
+ * Guards against symlink escapes and path-traversal when building output paths
+ * from untrusted or deeply nested source trees.
+ */
+export function assertContained(filePath: string, rootDir: string): void {
+  const relative = path.relative(rootDir, filePath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(
+      `Security: output path "${filePath}" escapes output root "${rootDir}"`
+    );
+  }
+}
+
+/**
+ * Synchronous recursive walk — collects the full FileEntry[] upfront.
+ * Used for the fast count/stats phase before processing begins.
  */
 export function scanDirectory(rootDir: string): FileEntry[] {
   const entries: FileEntry[] = [];
@@ -65,4 +69,45 @@ export function scanDirectory(rootDir: string): FileEntry[] {
 
   walk(rootDir);
   return entries;
+}
+
+/**
+ * Async BFS walk — yields FileEntry items one-by-one as directories are read.
+ * Non-blocking: yields control between directory reads so encode jobs can
+ * interleave with the scan. Unreadable subdirectories are skipped silently.
+ */
+export async function* walkAsync(rootDir: string): AsyncGenerator<FileEntry> {
+  const queue: string[] = [rootDir];
+
+  while (queue.length > 0) {
+    const dir = queue.shift()!;
+    let items: fs.Dirent[];
+
+    try {
+      items = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const item of items) {
+      const fullPath = path.join(dir, item.name);
+
+      if (item.isDirectory()) {
+        queue.push(fullPath);
+      } else if (item.isFile() && !isIgnored(item.name)) {
+        const relativePath = path.relative(rootDir, fullPath);
+        yield { inputPath: fullPath, relativePath };
+      }
+    }
+  }
+}
+
+/**
+ * Lift a FileEntry[] into an AsyncIterable so it can be passed to convertFiles
+ * without re-scanning the directory when we already have the list.
+ */
+export async function* fromArray(arr: FileEntry[]): AsyncGenerator<FileEntry> {
+  for (const item of arr) {
+    yield item;
+  }
 }

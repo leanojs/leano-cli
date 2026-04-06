@@ -38,6 +38,9 @@ Options:
   --max-height <px>       Maximum output height (no upscaling)
   -o, --out <path>        Output directory      (default: <input>-optimized)
   --in-place              Replace source directory safely via temp dir
+  -c, --concurrency <n>   Parallel jobs (default scales with CPU; cap webp 16 / both 12 / avif 8)
+  --quiet                 No per-file rows (spinner + summary only)
+  --dry-run               List planned outputs only
   -h, --help              Show help
   -V, --version           Show version
 ```
@@ -124,7 +127,8 @@ src/
   index.ts    Entry point & orchestration
   cli.ts      Argument parsing (commander)
   scan.ts     Recursive directory traversal
-  convert.ts  sharp encoding logic + p-limit concurrency
+  convert.ts  worker-thread pool (one sharp pipeline per core slot) + job scheduling
+  workers/    encodeWorker.ts + encodePool.ts — parallel Node workers for CPU-bound encode
   writer.ts   Output & in-place replacement logic
   logger.ts   Table, summary, formatting helpers
   types.ts    Shared TypeScript types

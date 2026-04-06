@@ -4,22 +4,31 @@ import type { CliOptions, OutputFormat } from './types.js';
 
 const VALID_FORMATS: OutputFormat[] = ['webp', 'avif', 'both'];
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { version: PKG_VERSION } = require('../package.json') as { version: string };
+
 export function parseArgs(argv: string[]): { inputDir: string; options: CliOptions } {
   const program = new Command();
 
   program
     .name('webpocalypse')
     .description('Batch convert images to WebP/AVIF with quality control and directory structure preservation')
-    .version('1.0.0')
+    .version(PKG_VERSION)
     .argument('<input>', 'Input directory containing images to convert')
     .option('-f, --format <format>', 'Output format: webp, avif, or both', 'webp')
-    .option('-q, --quality <number>', 'Compression quality (50–100)', '80')
+    .option('-q, --quality <number>', 'Compression quality 1–100', '80')
     .option('--lossless', 'Use lossless compression', false)
     .option('--max-width <number>', 'Maximum output width in pixels (no upscaling)')
     .option('--max-height <number>', 'Maximum output height in pixels (no upscaling)')
     .option('-o, --out <path>', 'Output directory (default: <input>-optimized)')
     .option('--in-place', 'Overwrite source directory safely via temp dir', false)
-    .option('--json', 'Output structured JSON results to stdout', false);
+    .option(
+      '-c, --concurrency <number>',
+      'Worker thread count (default: scales with CPU; webp≤16, both≤12, avif≤8)',
+    )
+    .option('--quiet', 'Suppress per-file progress rows; still shows the final summary', false)
+    .option('--dry-run', 'Show what would be written without writing any files', false)
+    .option('--json', 'Write structured JSON results to stdout after completion', false);
 
   program.parse(argv);
 
@@ -56,6 +65,14 @@ export function parseArgs(argv: string[]): { inputDir: string; options: CliOptio
     }
   }
 
+  let concurrency: number | undefined;
+  if (opts.concurrency !== undefined) {
+    concurrency = parseInt(opts.concurrency as string, 10);
+    if (isNaN(concurrency) || concurrency < 1) {
+      program.error(`Invalid --concurrency "${opts.concurrency}". Must be a positive integer`);
+    }
+  }
+
   const inputDir = path.resolve(inputArg);
 
   return {
@@ -69,6 +86,9 @@ export function parseArgs(argv: string[]): { inputDir: string; options: CliOptio
       out: opts.out ? path.resolve(opts.out as string) : undefined,
       inPlace: opts.inPlace as boolean,
       json: opts.json as boolean,
+      concurrency,
+      quiet: opts.quiet as boolean,
+      dryRun: opts.dryRun as boolean,
     },
   };
 }

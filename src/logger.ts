@@ -1,6 +1,9 @@
 import chalk from 'chalk';
 import type { ConversionResult, ConversionSummary } from './types.js';
 
+// All output goes to stderr so stdout stays clean for --json consumers.
+const err = (...args: Parameters<typeof console.error>) => console.error(...args);
+
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
 export function formatBytes(bytes: number): string {
@@ -36,24 +39,24 @@ const HEADER =
     truncatePath('File', COL.file) + '  ' +
     'Original'.padStart(COL.original) + '  ' +
     'Converted'.padStart(COL.converted) + '  ' +
-    'Savings'.padStart(COL.savings)
+    'Savings'.padStart(COL.savings),
   );
 
 const DIVIDER = '─'.repeat(COL.file + COL.original + COL.converted + COL.savings + 6);
 
 export function printTableHeader(): void {
-  console.log();
-  console.log(HEADER);
-  console.log(chalk.dim(DIVIDER));
+  err();
+  err(HEADER);
+  err(chalk.dim(DIVIDER));
 }
 
 export function printResultRow(result: ConversionResult): void {
   if (!result.success) {
-    console.log(
+    err(
       chalk.red('✖ ') +
       chalk.red(truncatePath(result.relativePath, COL.file - 2)) +
       '  ' +
-      chalk.dim(`Failed: ${result.error ?? 'unknown error'}`)
+      chalk.dim(`Failed: ${result.error ?? 'unknown error'}`),
     );
     return;
   }
@@ -80,12 +83,12 @@ export function printResultRow(result: ConversionResult): void {
     savingsStr = chalk.red(savings.padStart(COL.savings));
   }
 
-  console.log(
+  err(
     chalk.dim('  ') +
     fileCol.padEnd(COL.file) + '  ' +
     chalk.dim(formatBytes(result.originalSize).padStart(COL.original)) + '  ' +
     chalk.cyan(formatBytes(result.convertedSize).padStart(COL.converted)) + '  ' +
-    savingsStr
+    savingsStr,
   );
 }
 
@@ -124,8 +127,8 @@ export function buildSummary(results: ConversionResult[]): ConversionSummary {
 }
 
 export function printSummary(summary: ConversionSummary, outputDir: string): void {
-  console.log(chalk.dim(DIVIDER));
-  console.log();
+  err(chalk.dim(DIVIDER));
+  err();
 
   const { successCount, failureCount, skippedCount, totalOriginalBytes, totalConvertedBytes } =
     summary;
@@ -135,34 +138,25 @@ export function printSummary(summary: ConversionSummary, outputDir: string): voi
       ? Math.round(((totalOriginalBytes - totalConvertedBytes) / totalOriginalBytes) * 100)
       : 0;
 
-    console.log(
-      chalk.green('✔') + ' ' +
-      chalk.bold(`${successCount} file${successCount !== 1 ? 's' : ''} converted`)
-    );
-    console.log(
+    err(chalk.green('✔') + ' ' + chalk.bold(`${successCount} file${successCount !== 1 ? 's' : ''} converted`));
+    err(
       chalk.green('✔') + ' ' +
       `${formatBytes(totalOriginalBytes)} → ${formatBytes(totalConvertedBytes)} ` +
-      chalk.bold.green(`(${savings}% saved)`)
+      chalk.bold.green(`(${savings}% saved)`),
     );
   }
 
   if (skippedCount > 0) {
-    console.log(
-      chalk.dim('·') + ' ' +
-      chalk.dim(`${skippedCount} file${skippedCount !== 1 ? 's' : ''} copied as-is`)
-    );
+    err(chalk.dim('·') + ' ' + chalk.dim(`${skippedCount} file${skippedCount !== 1 ? 's' : ''} copied as-is`));
   }
 
   if (failureCount > 0) {
-    console.log(
-      chalk.red('✖') + ' ' +
-      chalk.red.bold(`${failureCount} file${failureCount !== 1 ? 's' : ''} failed`)
-    );
+    err(chalk.red('✖') + ' ' + chalk.red.bold(`${failureCount} file${failureCount !== 1 ? 's' : ''} failed`));
   }
 
-  console.log();
-  console.log(chalk.dim('Output: ') + chalk.cyan(outputDir));
-  console.log();
+  err();
+  err(chalk.dim('Output: ') + chalk.cyan(outputDir));
+  err();
 }
 
 // ─── Spinner helpers ─────────────────────────────────────────────────────────

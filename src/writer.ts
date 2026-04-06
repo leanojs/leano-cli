@@ -1,38 +1,32 @@
 import path from 'path';
 import os from 'os';
 import fse from 'fs-extra';
-import type { CliOptions, ConversionResult } from './types.js';
+import type { CliOptions, ConversionResult, FileEntry } from './types.js';
 import { convertFiles } from './convert.js';
-import type { FileEntry } from './types.js';
 
-/**
- * Determine the final output directory from CLI options.
- * - `--out <path>` wins if provided
- * - `--in-place` uses a temp dir (caller must finalize after success)
- * - Default: `<inputDir>-optimized`
- */
 export function resolveOutputDir(inputDir: string, options: CliOptions): string {
   if (options.out) return options.out;
-  if (options.inPlace) return ''; // placeholder; writer uses a temp dir internally
+  if (options.inPlace) return '';
   return `${inputDir}-optimized`;
 }
 
 /**
  * Run conversion and write output.
  *
- * For --in-place:
- *   1. Write everything to a temporary directory.
- *   2. Only if ALL conversions succeed, atomically replace the source directory.
- *   3. On any failure, leave the source untouched and clean up the temp dir.
+ * Accepts an AsyncIterable<FileEntry> so callers can pass either a streaming
+ * async generator (walkAsync) or a pre-collected array lifted with fromArray —
+ * no second directory scan is needed.
  *
- * For normal output:
- *   Write directly to the resolved output directory.
+ * For --in-place:
+ *   1. Write everything to a temp directory.
+ *   2. Only if ALL conversions succeed, atomically replace the source directory.
+ *   3. On any failure, source is left untouched and temp is cleaned up.
  */
 export async function writeOutput(
   inputDir: string,
-  files: FileEntry[],
+  files: AsyncIterable<FileEntry>,
   options: CliOptions,
-  onProgress: (result: ConversionResult) => void
+  onProgress: (result: ConversionResult) => void,
 ): Promise<{ results: ConversionResult[]; outputDir: string }> {
   if (options.inPlace) {
     return runInPlace(inputDir, files, options, onProgress);
@@ -46,13 +40,13 @@ export async function writeOutput(
 
 async function runInPlace(
   inputDir: string,
-  files: FileEntry[],
+  files: AsyncIterable<FileEntry>,
   options: CliOptions,
-  onProgress: (result: ConversionResult) => void
+  onProgress: (result: ConversionResult) => void,
 ): Promise<{ results: ConversionResult[]; outputDir: string }> {
   const tempDir = path.join(
     os.tmpdir(),
-    `webpocalypse-${process.pid}-${Date.now()}`
+    `webpocalypse-${process.pid}-${Date.now()}`,
   );
 
   try {
@@ -61,12 +55,11 @@ async function runInPlace(
 
     const hasFailures = results.some((r) => !r.success);
     if (hasFailures) {
-      // Leave source untouched; clean up temp
       await fse.remove(tempDir);
       return { results, outputDir: inputDir };
     }
 
-    // All succeeded — replace source directory atomically
+    // All succeeded — replace source directory atomically.
     const backupDir = `${inputDir}.bak-${Date.now()}`;
     await fse.move(inputDir, backupDir);
 
@@ -74,7 +67,7 @@ async function runInPlace(
       await fse.move(tempDir, inputDir);
       await fse.remove(backupDir);
     } catch (moveErr) {
-      // Restore from backup on failure
+      // Move to final location failed; restore from backup.
       await fse.move(backupDir, inputDir);
       await fse.remove(tempDir).catch(() => undefined);
       throw moveErr;

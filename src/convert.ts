@@ -1,154 +1,113 @@
-import sharp from "sharp";
-import fs from "fs";
-import path from "path";
-import fse from "fs-extra";
-import pLimit from "p-limit";
+import os from "os";
 import type { FileEntry, CliOptions, ConversionResult } from "./types.js";
 import { isPassthrough, replaceExtension } from "./scan.js";
+import { EncodeWorkerPool } from "./workers/encodePool.js";
+import type { EncodeWorkerJob } from "./workers/encodeWorker.js";
 
-function applyResize(image: sharp.Sharp, options: CliOptions): sharp.Sharp {
-  if (!options.maxWidth && !options.maxHeight) return image;
+type JobFormat = "webp" | "avif" | "passthrough";
 
-  return image.resize({
-    width: options.maxWidth,
-    height: options.maxHeight,
-    fit: "inside",
-    withoutEnlargement: true,
-  });
-}
-
-async function encodeToFile(
-  file: FileEntry,
-  format: "webp" | "avif",
-  outputDir: string,
-  options: CliOptions,
-): Promise<ConversionResult> {
-  const inputBuffer = fs.readFileSync(file.inputPath);
-  const originalSize = inputBuffer.length;
-  const outputRelativePath = replaceExtension(file.relativePath, format);
-  const outputPath = path.join(outputDir, outputRelativePath);
-
-  await fse.ensureDir(path.dirname(outputPath));
-
-  let image = sharp(inputBuffer);
-  image = applyResize(image, options);
-
-  if (format === "webp") {
-    await (
-      options.lossless
-        ? image.webp({ lossless: true })
-        : image.webp({ quality: options.quality })
-    ).toFile(outputPath);
-  } else {
-    // effort 2 (scale 0–9): ~10× faster than default 4 with negligible quality
-    // loss for web use. The default effort level locks the CPU.
-    await (
-      options.lossless
-        ? image.avif({ lossless: true, effort: 2 })
-        : image.avif({ quality: options.quality, effort: 2 })
-    ).toFile(outputPath);
-  }
-
-  const convertedSize = fs.statSync(outputPath).size;
-
-  return {
-    inputPath: file.inputPath,
-    relativePath: file.relativePath,
-    outputPath,
-    outputRelativePath,
-    originalSize,
-    convertedSize,
-    success: true,
-    skipped: false,
-  };
-}
-
-async function passthroughFile(
-  file: FileEntry,
-  outputDir: string,
-): Promise<ConversionResult> {
-  const outputPath = path.join(outputDir, file.relativePath);
-  await fse.ensureDir(path.dirname(outputPath));
-  await fse.copy(file.inputPath, outputPath);
-
-  const size = fs.statSync(file.inputPath).size;
-
-  return {
-    inputPath: file.inputPath,
-    relativePath: file.relativePath,
-    outputPath,
-    outputRelativePath: file.relativePath,
-    originalSize: size,
-    convertedSize: size,
-    success: true,
-    skipped: true,
-  };
+interface Job {
+  file: FileEntry;
+  format: JobFormat;
 }
 
 /**
- * Convert all files and write directly to outputDir.
- * Calls onProgress after each file finishes (success or failure).
+ * Expand FileEntry items into one Job per output file.
+ * A convertible file with --format both yields two jobs (webp + avif).
+ */
+async function* expandToJobs(
+  files: AsyncIterable<FileEntry>,
+  format: CliOptions["format"],
+): AsyncGenerator<Job> {
+  for await (const file of files) {
+    if (isPassthrough(file.inputPath)) {
+      yield { file, format: "passthrough" };
+    } else if (format === "both") {
+      yield { file, format: "webp" };
+      yield { file, format: "avif" };
+    } else {
+      yield { file, format };
+    }
+  }
+}
+
+function toWorkerJob(job: Job, outputDir: string, options: CliOptions): EncodeWorkerJob {
+  return {
+    outputDir,
+    inputPath: job.file.inputPath,
+    relativePath: job.file.relativePath,
+    format: job.format,
+    quality: options.quality,
+    lossless: options.lossless,
+    maxWidth: options.maxWidth,
+    maxHeight: options.maxHeight,
+  };
+}
+
+const CPU_COUNT = Math.max(1, os.cpus().length);
+
+/**
+ * Parallel worker threads. When omitted on the CLI, scale with CPU count.
+ */
+export function resolveConcurrency(options: CliOptions): number {
+  if (options.concurrency !== undefined) {
+    return Math.max(1, options.concurrency);
+  }
+  if (options.format === "avif") {
+    return Math.min(CPU_COUNT, 8);
+  }
+  if (options.format === "both") {
+    return Math.min(CPU_COUNT, 12);
+  }
+  return Math.min(CPU_COUNT, 16);
+}
+
+/**
+ * Libvips threads *per worker*. Workers run one job at a time; spread CPU
+ * across workers so total ≈ core count.
+ */
+function libvipsThreadsPerWorker(workerCount: number): number {
+  const capped = Math.min(workerCount, CPU_COUNT);
+  return Math.max(1, Math.floor(CPU_COUNT / capped));
+}
+
+/**
+ * Each encode/copy runs in a dedicated worker thread (separate Node isolate +
+ * sharp). This uses multiple CPU cores in parallel instead of multiplexing
+ * many sharp pipelines on one event loop.
  */
 export async function convertFiles(
-  files: FileEntry[],
+  files: AsyncIterable<FileEntry>,
   outputDir: string,
   options: CliOptions,
   onProgress: (result: ConversionResult) => void,
 ): Promise<ConversionResult[]> {
-  // AVIF is much heavier to encode — reduce concurrency to avoid CPU saturation
-  const concurrency =
-    options.format === "avif" ? 3 : options.format === "both" ? 4 : 6;
+  const workerCount = resolveConcurrency(options);
+  const libvips = libvipsThreadsPerWorker(workerCount);
+  const pool = new EncodeWorkerPool(workerCount, libvips);
 
-  const limit = pLimit(concurrency);
   const allResults: ConversionResult[] = [];
+  const active = new Set<Promise<void>>();
 
-  const tasks = files.flatMap((file) => {
-    if (isPassthrough(file.inputPath)) {
-      return [
-        limit(async () => {
-          const result = await passthroughFile(file, outputDir);
-          allResults.push(result);
-          onProgress(result);
-        }),
-      ];
-    }
-
-    const formats: Array<"webp" | "avif"> =
-      options.format === "both" ? ["webp", "avif"] : [options.format];
-
-    return formats.map((fmt) =>
-      limit(async () => {
-        let result: ConversionResult;
-        try {
-          result = await encodeToFile(file, fmt, outputDir, options);
-        } catch (err) {
-          const stat = (() => {
-            try {
-              return fs.statSync(file.inputPath);
-            } catch {
-              return null;
-            }
-          })();
-
-          result = {
-            inputPath: file.inputPath,
-            relativePath: file.relativePath,
-            outputPath: "",
-            outputRelativePath: replaceExtension(file.relativePath, fmt),
-            originalSize: stat?.size ?? 0,
-            convertedSize: 0,
-            success: false,
-            skipped: false,
-            error: err instanceof Error ? err.message : String(err),
-          };
-        }
-
+  try {
+    for await (const job of expandToJobs(files, options.format)) {
+      const payload = toWorkerJob(job, outputDir, options);
+      let p!: Promise<void>;
+      p = pool.run(payload).then((result) => {
         allResults.push(result);
         onProgress(result);
-      }),
-    );
-  });
+        active.delete(p);
+      });
+      active.add(p);
 
-  await Promise.all(tasks);
-  return allResults;
+      if (active.size >= workerCount) {
+        await Promise.race([...active]);
+      }
+    }
+
+    await Promise.all([...active]);
+    return allResults;
+  } finally {
+    await pool.destroy();
+  }
 }

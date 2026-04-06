@@ -9,6 +9,9 @@ export interface CliOptions {
   out?: string;
   inPlace: boolean;
   json: boolean;
+  concurrency?: number;
+  quiet: boolean;
+  dryRun: boolean;
 }
 
 export interface FileEntry {

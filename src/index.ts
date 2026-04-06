@@ -53,7 +53,7 @@ async function main(): Promise<void> {
 
   console.log();
   console.log(
-    chalk.bold('webpocalypse') +
+    chalk.bold('leano') +
     chalk.dim(` v${getVersion()}`)
   );
   console.log(

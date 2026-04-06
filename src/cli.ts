@@ -4,16 +4,25 @@ import type { CliOptions, OutputFormat } from './types.js';
 
 const VALID_FORMATS: OutputFormat[] = ['webp', 'avif', 'both'];
 
+function getPackageVersion(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require('../package.json') as { version: string }).version;
+  } catch {
+    return '0.0.0';
+  }
+}
+
 export function parseArgs(argv: string[]): { inputDir: string; options: CliOptions } {
   const program = new Command();
 
   program
-    .name('webpocalypse')
+    .name('leano')
     .description('Batch convert images to WebP/AVIF with quality control and directory structure preservation')
-    .version('1.0.0')
+    .version(getPackageVersion())
     .argument('<input>', 'Input directory containing images to convert')
     .option('-f, --format <format>', 'Output format: webp, avif, or both', 'webp')
-    .option('-q, --quality <number>', 'Compression quality (50–100)', '80')
+    .option('-q, --quality <number>', 'Compression quality (1–100)', '80')
     .option('--lossless', 'Use lossless compression', false)
     .option('--max-width <number>', 'Maximum output width in pixels (no upscaling)')
     .option('--max-height <number>', 'Maximum output height in pixels (no upscaling)')

@@ -1,8 +1,10 @@
 {
-  "name": "webpocalypse",
+  "name": "@leanojs/leano",
   "version": "1.0.2",
-  "description": "CLI tool for batch image conversion to WebP/AVIF with quality control and directory structure preservation",
+  "description": "Leano — batch image conversion to WebP/AVIF with quality control and directory structure preservation",
+  "homepage": "https://leano.dev",
   "keywords": [
+    "leano",
     "image",
     "conversion",
     "webp",
@@ -10,17 +12,20 @@
     "optimization",
     "cli"
   ],
-  "author": "",
+  "author": "meowbeen",
   "license": "MIT",
   "main": "dist/index.js",
   "bin": {
-    "webpocalypse": "dist/index.js"
+    "leano": "dist/index.js"
   },
   "files": [
     "dist"
   ],
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",

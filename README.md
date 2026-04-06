@@ -1,9 +1,11 @@
-# webpocalypse
+# Leano
 
 > Batch convert images to WebP/AVIF — fully local, no server, no API calls.
 
+Docs and web app: [leano.dev](https://leano.dev)
+
 ```
-npx webpocalypse ./public --format webp --quality 80 --max-width 1920
+npx leano ./public --format webp --quality 80 --max-width 1920
 ```
 
 Recursively scans a directory, converts every `.jpg`, `.jpeg`, `.png` to WebP
@@ -15,9 +17,9 @@ folder structure, and reports per-file savings.
 ## Install
 
 ```bash
-npm install -g webpocalypse
+npm install -g leano
 # or run without installing:
-npx webpocalypse <input> [options]
+npx leano <input> [options]
 ```
 
 ---
@@ -25,7 +27,7 @@ npx webpocalypse <input> [options]
 ## Usage
 
 ```
-webpocalypse <input> [options]
+leano <input> [options]
 
 Arguments:
   input                   Directory of images to convert
@@ -38,6 +40,7 @@ Options:
   --max-height <px>       Maximum output height (no upscaling)
   -o, --out <path>        Output directory      (default: <input>-optimized)
   --in-place              Replace source directory safely via temp dir
+  --json                  Output structured JSON results to stdout
   -h, --help              Show help
   -V, --version           Show version
 ```
@@ -48,22 +51,22 @@ Options:
 
 ```bash
 # WebP at quality 80 (default)
-webpocalypse ./images
+leano ./images
 
 # Both WebP + AVIF
-webpocalypse ./images --format both --quality 75
+leano ./images --format both --quality 75
 
 # Resize + convert
-webpocalypse ./public/photos --format webp --max-width 1920 --quality 85
+leano ./public/photos --format webp --max-width 1920 --quality 85
 
 # Lossless WebP
-webpocalypse ./assets --format webp --lossless
+leano ./assets --format webp --lossless
 
 # Custom output directory
-webpocalypse ./src/images --format avif --out ./dist/images
+leano ./src/images --format avif --out ./dist/images
 
 # Overwrite source in-place (safe: uses temp dir, rolls back on failure)
-webpocalypse ./public --format webp --in-place
+leano ./public --format webp --in-place
 ```
 
 ---
@@ -71,7 +74,7 @@ webpocalypse ./public --format webp --in-place
 ## Output
 
 ```
-webpocalypse v1.0.0
+leano v1.0.2
   Input:   /home/user/project/public/images
   Output:  /home/user/project/public/images-optimized
   Format:  both  Quality: 80

@@ -1,6 +1,6 @@
 {
   "name": "leano-cli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Leano — batch image conversion to WebP/AVIF with quality control and directory structure preservation",
   "homepage": "https://leano.dev",
   "keywords": [

@@ -3,8 +3,14 @@ import fs from 'fs';
 import ora from 'ora';
 import chalk from 'chalk';
 import { parseArgs } from './cli.js';
-import { scanDirectory, isConvertible } from './scan.js';
+import {
+  scanDirectory,
+  fromArray,
+  isConvertible,
+  replaceExtension,
+} from './scan.js';
 import { writeOutput } from './writer.js';
+import { resolveConcurrency } from './convert.js';
 import {
   printTableHeader,
   printResultRow,
@@ -14,35 +20,37 @@ import {
 } from './logger.js';
 import type { ConversionResult } from './types.js';
 
+// All human-readable output goes to stderr so stdout is clean for --json.
+const log = (...args: Parameters<typeof console.error>) => console.error(...args);
+
 async function main(): Promise<void> {
   const { inputDir, options } = parseArgs(process.argv);
 
-  // ── Validate input directory ──────────────────────────────────────────────
+  // ── Validate input ────────────────────────────────────────────────────────
   if (!fs.existsSync(inputDir)) {
-    console.error(chalk.red(`✖ Input directory not found: ${inputDir}`));
+    log(chalk.red(`✖ Input directory not found: ${inputDir}`));
     process.exit(1);
   }
 
   const stat = fs.statSync(inputDir);
   if (!stat.isDirectory()) {
-    console.error(chalk.red(`✖ Input path is not a directory: ${inputDir}`));
+    log(chalk.red(`✖ Input path is not a directory: ${inputDir}`));
     process.exit(1);
   }
 
-  // ── Scan ──────────────────────────────────────────────────────────────────
+  // ── Scan (sync, fast — directory metadata only, no image reads) ───────────
   const spinner = ora({ text: 'Scanning for images…', stream: process.stderr }).start();
   const files = scanDirectory(inputDir);
   spinner.stop();
 
   if (files.length === 0) {
-    console.log(chalk.yellow('⚠ No files found in: ') + inputDir);
+    log(chalk.yellow('⚠ No files found in: ') + inputDir);
     process.exit(0);
   }
 
   const convertibleCount = files.filter(f => isConvertible(f.inputPath)).length;
   const passthroughCount = files.length - convertibleCount;
 
-  // Convertible files produce 1 or 2 outputs (--format both); pass-throughs always 1
   const totalOutputs = files.reduce((sum, f) => {
     return sum + (isConvertible(f.inputPath) && options.format === 'both' ? 2 : 1);
   }, 0);
@@ -51,42 +59,103 @@ async function main(): Promise<void> {
     ? inputDir
     : (options.out ?? `${inputDir}-optimized`);
 
-  console.log();
-  console.log(
-    chalk.bold('leano') +
-    chalk.dim(` v${getVersion()}`)
+  const jobSlots = resolveConcurrency(options);
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  log();
+  log(chalk.bold('leano') + chalk.dim(` v${getVersion()}`));
+  log(chalk.dim('  Input:   ') + inputDir);
+  log(
+    chalk.dim('  Output:  ') +
+      (options.inPlace ? chalk.yellow(outputDir + ' (in-place)') : outputDir),
   );
-  console.log(
-    chalk.dim('  Input:   ') + inputDir
-  );
-  console.log(
-    chalk.dim('  Output:  ') + (options.inPlace ? chalk.yellow(outputDir + ' (in-place)') : outputDir)
-  );
-  console.log(
-    chalk.dim('  Format:  ') + options.format +
-    chalk.dim('  Quality: ') + (options.lossless ? 'lossless' : String(options.quality)) +
-    (options.maxWidth ? chalk.dim('  Max-W: ') + options.maxWidth : '') +
-    (options.maxHeight ? chalk.dim('  Max-H: ') + options.maxHeight : '')
-  );
-  const filesSummary = passthroughCount > 0
-    ? `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert, ${passthroughCount} asset${passthroughCount !== 1 ? 's' : ''} copied as-is`
-    : `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert`;
-  console.log(
-    chalk.dim(`  Files:   ${filesSummary} → ${totalOutputs} output${totalOutputs !== 1 ? 's' : ''}`)
+  log(
+    chalk.dim('  Format:  ') +
+      options.format +
+      chalk.dim('  Quality: ') +
+      (options.lossless ? 'lossless' : String(options.quality)) +
+      (options.maxWidth ? chalk.dim('  Max-W: ') + options.maxWidth : '') +
+      (options.maxHeight ? chalk.dim('  Max-H: ') + options.maxHeight : '') +
+      chalk.dim('  Jobs: ') +
+      jobSlots +
+      (options.concurrency === undefined ? chalk.dim(' (auto)') : ''),
   );
 
+  const filesSummary =
+    passthroughCount > 0
+      ? `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert, ${passthroughCount} asset${passthroughCount !== 1 ? 's' : ''} copied as-is`
+      : `${convertibleCount} image${convertibleCount !== 1 ? 's' : ''} to convert`;
+
+  log(chalk.dim(`  Files:   ${filesSummary} → ${totalOutputs} output${totalOutputs !== 1 ? 's' : ''}`));
+
+  // ── Dry run ───────────────────────────────────────────────────────────────
+  if (options.dryRun) {
+    log();
+    log(chalk.yellow('  Dry run — nothing will be written.'));
+    log();
+
+    const PREVIEW_LIMIT = 20;
+    const plannedOutputs: string[] = [];
+
+    for (const file of files) {
+      if (isConvertible(file.inputPath)) {
+        const fmts = options.format === 'both' ? ['webp', 'avif'] : [options.format];
+        for (const fmt of fmts) {
+          plannedOutputs.push(replaceExtension(file.relativePath, fmt));
+        }
+      } else {
+        plannedOutputs.push(file.relativePath + chalk.dim(' (copy)'));
+      }
+    }
+
+    const preview = plannedOutputs.slice(0, PREVIEW_LIMIT);
+    for (const p of preview) {
+      log(chalk.dim('    ') + p);
+    }
+    if (plannedOutputs.length > PREVIEW_LIMIT) {
+      log(chalk.dim(`    … and ${plannedOutputs.length - PREVIEW_LIMIT} more`));
+    }
+
+    log();
+    process.exit(0);
+  }
+
   // ── Convert ───────────────────────────────────────────────────────────────
-  printTableHeader();
+  if (!options.quiet) {
+    printTableHeader();
+  }
+
+  // Huge batches: printing one stderr row per completion blocks the event loop
+  // and *feels* sequential even when encodes run in parallel. Sample rows.
+  const rowStride =
+    options.quiet
+      ? 0
+      : totalOutputs > 8000
+        ? 250
+        : totalOutputs > 3000
+          ? 100
+          : totalOutputs > 800
+            ? 25
+            : 1;
+
+  if (!options.quiet && rowStride > 1) {
+    log(
+      chalk.dim(
+        `  (Sampling 1 row every ${rowStride} outputs; failures always shown. ` +
+          'Use --quiet for spinner-only.)',
+      ),
+    );
+    log();
+  }
 
   let doneCount = 0;
   const isTTY = Boolean(process.stderr.isTTY);
 
-  // Only spin in interactive terminals; in CI/piped output just print rows.
-  const progressSpinner = isTTY
-    ? ora({ text: progressText(0, totalOutputs, ''), stream: process.stderr }).start()
-    : null;
-
-  const allResults: ConversionResult[] = [];
+  // Spinner only in interactive terminals; suppressed in CI/pipe or --quiet.
+  const progressSpinner =
+    isTTY && !options.quiet
+      ? ora({ text: progressText(0, totalOutputs, ''), stream: process.stderr }).start()
+      : null;
 
   function onProgress(result: ConversionResult): void {
     doneCount++;
@@ -95,8 +164,17 @@ async function main(): Promise<void> {
       progressSpinner.clear();
     }
 
-    printResultRow(result);
-    allResults.push(result);
+    if (!options.quiet) {
+      const sample =
+        rowStride <= 1 ||
+        !result.success ||
+        doneCount === 1 ||
+        doneCount === totalOutputs ||
+        doneCount % rowStride === 0;
+      if (sample) {
+        printResultRow(result);
+      }
+    }
 
     if (progressSpinner && doneCount < totalOutputs) {
       progressSpinner.text = progressText(doneCount, totalOutputs, result.outputRelativePath);
@@ -105,27 +183,32 @@ async function main(): Promise<void> {
   }
 
   try {
+    // `fromArray` lifts the pre-scanned list into an AsyncIterable so
+    // convertFiles can use the pool pattern without re-scanning the directory.
     const { results, outputDir: finalOutputDir } = await writeOutput(
       inputDir,
-      files,
+      fromArray(files),
       options,
-      onProgress
+      onProgress,
     );
 
     progressSpinner?.stop();
 
-    // Sort results by path for a stable display order
     results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
     const summary = buildSummary(results);
     printSummary(summary, finalOutputDir);
 
     if (options.json) {
+      // Each output is identified by both its input and output relative paths.
+      // With --format both, two entries share the same `input` but differ in
+      // `output` (e.g. hero.webp vs hero.avif).
       const jsonOutput = {
         files: results
           .filter((r) => r.success && !r.skipped)
           .map((r) => ({
-            path: r.relativePath,
+            input: r.relativePath,
+            output: r.outputRelativePath,
             originalBytes: r.originalSize,
             convertedBytes: r.convertedSize,
           })),
@@ -139,7 +222,10 @@ async function main(): Promise<void> {
   } catch (err) {
     progressSpinner?.stop();
     console.error();
-    console.error(chalk.red('✖ Fatal error: ') + (err instanceof Error ? err.message : String(err)));
+    console.error(
+      chalk.red('✖ Fatal error: ') +
+        (err instanceof Error ? err.message : String(err)),
+    );
     process.exit(1);
   }
 }

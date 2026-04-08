@@ -11,7 +11,7 @@ export function parseArgs(argv: string[]): { inputDir: string; options: CliOptio
   const program = new Command();
 
   program
-    .name('webpocalypse')
+    .name('leano')
     .description('Batch convert images to WebP/AVIF with quality control and directory structure preservation')
     .version(PKG_VERSION)
     .argument('<input>', 'Input directory containing images to convert')

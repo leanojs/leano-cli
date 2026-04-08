@@ -46,7 +46,7 @@ async function runInPlace(
 ): Promise<{ results: ConversionResult[]; outputDir: string }> {
   const tempDir = path.join(
     os.tmpdir(),
-    `webpocalypse-${process.pid}-${Date.now()}`,
+    `leano-${process.pid}-${Date.now()}`,
   );
 
   try {

@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   // ── Header ────────────────────────────────────────────────────────────────
   log();
-  log(chalk.bold('webpocalypse') + chalk.dim(` v${getVersion()}`));
+  log(chalk.bold('leano') + chalk.dim(` v${getVersion()}`));
   log(chalk.dim('  Input:   ') + inputDir);
   log(
     chalk.dim('  Output:  ') +

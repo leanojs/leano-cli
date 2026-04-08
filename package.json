@@ -1,6 +1,6 @@
 {
-  "name": "@leanojs/leano",
-  "version": "1.0.2",
+  "name": "leano-cli",
+  "version": "1.1.0",
   "description": "Leano — batch image conversion to WebP/AVIF with quality control and directory structure preservation",
   "homepage": "https://leano.dev",
   "keywords": [
@@ -16,7 +16,7 @@
   "license": "MIT",
   "main": "dist/index.js",
   "bin": {
-    "leano": "dist/index.js"
+    "leano-cli": "dist/index.js"
   },
   "files": [
     "dist"

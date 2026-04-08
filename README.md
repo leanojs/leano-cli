@@ -5,7 +5,7 @@
 Docs and web app: [leano.dev](https://leano.dev)
 
 ```
-npx leano ./public --format webp --quality 80 --max-width 1920
+npx leano-cli ./public --format webp --quality 80 --max-width 1920
 ```
 
 Recursively scans a directory, converts every `.jpg`, `.jpeg`, `.png` to WebP
@@ -17,9 +17,9 @@ folder structure, and reports per-file savings.
 ## Install
 
 ```bash
-npm install -g leano
+npm install -g leano-cli
 # or run without installing:
-npx leano <input> [options]
+npx leano-cli <input> [options]
 ```
 
 ---
@@ -27,7 +27,7 @@ npx leano <input> [options]
 ## Usage
 
 ```
-leano <input> [options]
+leano-cli <input> [options]
 
 Arguments:
   input                   Directory of images to convert
@@ -53,22 +53,22 @@ Options:
 
 ```bash
 # WebP at quality 80 (default)
-leano ./images
+leano-cli ./images
 
 # Both WebP + AVIF
-leano ./images --format both --quality 75
+leano-cli ./images --format both --quality 75
 
 # Resize + convert
-leano ./public/photos --format webp --max-width 1920 --quality 85
+leano-cli ./public/photos --format webp --max-width 1920 --quality 85
 
 # Lossless WebP
-leano ./assets --format webp --lossless
+leano-cli ./assets --format webp --lossless
 
 # Custom output directory
-leano ./src/images --format avif --out ./dist/images
+leano-cli ./src/images --format avif --out ./dist/images
 
 # Overwrite source in-place (safe: uses temp dir, rolls back on failure)
-leano ./public --format webp --in-place
+leano-cli ./public --format webp --in-place
 ```
 
 ---
@@ -76,7 +76,7 @@ leano ./public --format webp --in-place
 ## Output
 
 ```
-leano v1.0.2
+leano-cli v1.0.2
   Input:   /home/user/project/public/images
   Output:  /home/user/project/public/images-optimized
   Format:  both  Quality: 80

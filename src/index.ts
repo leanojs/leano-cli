@@ -3,6 +3,7 @@ import fs from 'fs';
 import ora from 'ora';
 import chalk from 'chalk';
 import { parseArgs } from './cli.js';
+import { runRemoteCli } from './remote/cli.js';
 import {
   scanDirectory,
   fromArray,
@@ -24,6 +25,11 @@ import type { ConversionResult } from './types.js';
 const log = (...args: Parameters<typeof console.error>) => console.error(...args);
 
 async function main(): Promise<void> {
+  if (process.argv[2] === 'remote') {
+    await runRemoteCli([process.argv[0], process.argv[1], ...process.argv.slice(3)]);
+    return;
+  }
+
   const { inputDir, options } = parseArgs(process.argv);
 
   // ── Validate input ────────────────────────────────────────────────────────

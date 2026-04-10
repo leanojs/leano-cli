@@ -29,6 +29,10 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:agent": "tsc -p tsconfig.agent.json",
+    "build:all": "npm run build && npm run build:agent",
+    "dev:agent": "npm run build:agent && node agent/dist/index.js",
+    "soak:gen": "ts-node --project tsconfig.agent.json agent/src/soak.ts",
     "dev": "ts-node src/index.ts",
     "prepublishOnly": "npm run build"
   },
